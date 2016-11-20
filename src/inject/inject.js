@@ -42,7 +42,7 @@ function generateCSS(event) {
   var imgHeight = 0,
       imgWidth = 0,
       top = window.scrollY + event.clientY,
-      left = window.scrollX + event.clientX;;
+      left = window.scrollX + event.clientX;
   if (curImg) {
     imgHeight = parseInt(window.getComputedStyle(document.getElementById('__markusZoom')).height);
     imgWidth = parseInt(window.getComputedStyle(document.getElementById('__markusZoom')).width);
@@ -50,14 +50,14 @@ function generateCSS(event) {
   if ((window.scrollY + event.clientY + imgHeight) > (window.scrollY + window.innerHeight)) {
     top = top - ((window.scrollY + event.clientY + imgHeight) - (window.scrollY + window.innerHeight)) - 27;
   }
-  if ((window.scrollX + event.clientX + imgWidth) > (window.scrollx + window.innerWidth)) {
-    left = left - ((window.scrollX + event.clientX + imgWidth) - (window.scrollX + window.innerWidth)) - 27;
+  if ((window.scrollX + event.clientX + imgWidth) > (window.scrollX + window.innerWidth - 27)) {
+    left = left - ((window.scrollX + event.clientX + imgWidth) - (window.scrollX + window.innerWidth)) - 22;
   }
   var css = {
     'position':   'absolute',
     'z-index':    '2147483647',
     'max-height': (window.innerHeight - 27) + 'px',
-    'max-width': (window.innerWidth - event.clientX) + 'px',
+    'max-width':  (window.innerWidth - 27) + 'px',
     'top':        (top + 5) + 'px',
     left:         (left + 5) + 'px;',
     toCSS: function (){
@@ -86,55 +86,94 @@ function restoreTitle(el) {
     el.dataset.markusZoomTitle = '';
   }
 }
+function overLink(event, curRect) {
+  if (
+      event.clientY > parseInt(curRect.top) && 
+      event.clientY < parseInt(curRect.bottom) && 
+      event.clientX > parseInt(curRect.left) && 
+      event.clientX < parseInt(curRect.right)
+    ) {
+    return true;
+  }
+  return false;
+}
+
+function hideImg(event, curRect, cur) {
+  if (!overLink(event, curRect)) {
+    if (curImg) {
+      document.body.removeChild(curImg);
+      curImg = undefined;
+      restoreTitle(cur);
+    }
+  } else if (curImg) {
+    curImg.style.cssText = generateCSS(event);
+  }
+}
 function addEventListenersTo(links) {
   [].slice.call(links).forEach(function(cur){
     if (cur.className.indexOf('__markusZoom') === -1) {
-      var ext, domain, href;
+      var ext, domain, href, curRect;
       href = cur.href;
       domain = getDomain(href)
       ext = getExt(href);
       if (options.supported.ext.image.indexOf(ext) > -1 || options.supported.ext.video.indexOf(ext) > -1) {
         cur.addEventListener('mousemove', function(event) {
-          removeTitle(cur);
-          if (!curImg) {
-            if (options.supported.ext.image.indexOf(ext) > -1) {
-              curImg = document.createElement('img');
-              curImg.addEventListener('load', function(){
-                if (curImg) {
-                  document.getElementById('__markusZoom').style.cssText = generateCSS(event);
+          curRect = this.getBoundingClientRect();
+          if (overLink(event, curRect)) {
+            removeTitle(cur);
+            if (!curImg) {
+              if (options.supported.ext.image.indexOf(ext) > -1) {
+                curImg = document.createElement('img');
+                curImg.addEventListener('load', function() {
+                  if (curImg) {
+                    curImg.style.cssText = generateCSS(event);
+                  }
+                });
+              } else if (options.supported.ext.video.indexOf(ext) > -1) {
+                curImg = document.createElement('video');
+                curImg.addEventListener('canplay', function() {
+                  if (curImg) {
+                    curImg.style.cssText = generateCSS(event);
+                  }
+                });
+                curImg.autoplay = 'true';
+                curImg.loop = true;
+                if (ext === 'gifv') {
+                  href = href.replace('gifv', 'mp4');
                 }
+              }
+              curImg.addEventListener('mouseover', function(event){
+                hideImg(event, curRect, cur);
               });
-            } else if (options.supported.ext.video.indexOf(ext) > -1) {
-              curImg = document.createElement('video');
-              curImg.addEventListener('canplay', function(){
-                if (curImg) {
-                  document.getElementById('__markusZoom').style.cssText = generateCSS(event);
-                }
+              curImg.addEventListener('mousemove', function(event){
+                hideImg(event, curRect, cur);
               });
-              curImg.autoplay = 'true';
-              curImg.loop = true;
-              if (ext === 'gifv') {
-                href = href.replace('gifv', 'mp4');
+              curImg.addEventListener('mouseout', function(event){
+                hideImg(event, curRect, cur);
+              });
+              curImg.addEventListener('click', function(event){
+                // ez clickthrough
+                cur.click();
+              });
+              curImg.src = href;
+              curImg.id = '__markusZoom';
+              document.body.appendChild(curImg);
+            }
+            if (event.clientX !== last.x || event.clientY !== last.y) {
+              if (curImg) {
+                last.x = event.clientX;
+                last.y = event.clientY;
+                curImg.style.cssText = generateCSS(event);
               }
             }
-            curImg.src = href;
-            curImg.id = '__markusZoom';
-            document.body.appendChild(curImg);
-          }
-          if (event.clientX !== last.x || event.clientY !== last.y) {
+          } else {
             if (curImg) {
-              last.x = event.clientX;
-              last.y = event.clientY;
-              curImg.style.cssText = generateCSS(event);
+              hideImg(event, curRect, cur);
             }
           }
         });
         cur.addEventListener('mouseout', function(event) {
-          if (curImg) {
-            document.body.removeChild(document.getElementById('__markusZoom'));
-            curImg = undefined;
-            restoreTitle(cur);
-          }
+          hideImg(event, curRect, cur);
         });
       }
       cur.className += ' __markusZoom';
